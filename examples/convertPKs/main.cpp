@@ -11,16 +11,12 @@
 #include "Gen2Pokemon.h"
 #include "Gen3Pokemon.h"
 
-
-std::string inputBox = "inBox";
-std::string outputBox = "outBox";
 int generation = 2;
-Language language = KOREAN;
-ConversionMethod method = LEGAL;
+Language originLanguage = ENGLISH;
+ConversionMethod method = ORIGINAL;
 
 bool printPokemon = false;
 bool sanitizeMythicals = true;
-
 
 int convert(std::string inputPath, std::string outputPath)
 {
@@ -49,11 +45,16 @@ int convert(std::string inputPath, std::string outputPath)
     }
 
     const bool japaneseFile = fileData.size() == japaneseSize;
-    if ((language == JAPANESE) != japaneseFile)
+    if ((originLanguage == JAPANESE) != japaneseFile)
     {
-        std::cerr << "The selected language does not match the PK" << generation << " file size\n";
+        std::cerr << "The selected originLanguage does not match the PK" << generation << " file size\n";
         return 1;
     }
+
+    std::cout << "fileData: " << std::endl;
+    for (int i = 0; i < fileData.size(); ++i)
+        std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(fileData[i]) << "";
+    std::cout << std::endl;
 
     const std::size_t partyDataSize = generation == 1 ? 44 : 48;
     const std::size_t pokemonDataOffset = 3;
@@ -65,24 +66,27 @@ int convert(std::string inputPath, std::string outputPath)
     std::unique_ptr<GBPokemon> source;
     if (generation == 1)
     {
-        source = std::make_unique<Gen1Pokemon>(language);
+        source = std::make_unique<Gen1Pokemon>(originLanguage);
     }
     else
     {
         // PCCS conversion only needs the 32-byte boxed portion.
-        source = std::make_unique<Gen2Pokemon>(language);
+        source = std::make_unique<Gen2Pokemon>(originLanguage);
     }
 
-    source->loadData(language,
-        fileData.data() + pokemonDataOffset,
-        fileData.data() + nicknameOffset,
-        fileData.data() + trainerNameOffset,
-        fileData[pokemonDataOffset]);
+    const byte* pkFileData = fileData.data();
+
+    std::cout << std::endl <<  "pkFileData: " << std::endl;
+    for (int i = 0; i < fileData.size(); ++i)
+        std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(pkFileData[i]) << "";
+    std::cout << std::endl << std::endl;
+
+    source->loadData(originLanguage, pkFileData, fileData.size());
 
     Gen3Pokemon converted;
     if (!source->convertToGen3(&table, &converted, method, sanitizeMythicals))
     {
-        std::cerr << "PCCS could not convert the Pokemon (" << inputPath << ")\n";
+        std::cerr << "PCCS could not convert the Pokemon (" << inputPath << ")\n\n";
         return 1;
     }
 
@@ -118,9 +122,15 @@ int convert(std::string inputPath, std::string outputPath)
     return 0;
 }
 
-int main()
+int main(int argc, char *argv[])
 {
-    std::filesystem::path inFolder = inputBox;
+    if (argc < 2) {
+        std::cerr << "Please specify all necessary arguments." << std::endl;
+        return 1;
+    }
+
+    std::filesystem::path inFolder = argv[1];
+    std::filesystem::path outFolder = argv[2];
 
     for (const std::filesystem::directory_entry &entry : std::filesystem::directory_iterator(inFolder))
     {
@@ -128,7 +138,8 @@ int main()
         {
             std::string inName = entry.path().filename();
             std::string outName = inName.substr(0, inName.length() - 1) + "3";
-            convert(inputBox + "/" + inName, outputBox + "/" + outName);
+            std::cout << "inName: " << inName << std::endl << "outName: " << outName << std::endl;
+            convert(inFolder / inName, outFolder / outName);
         }
     }
 }
